@@ -1,0 +1,41 @@
+name: ci
+
+# TypeScript の構文検査を PR と main への push で回す。action は SHA 固定。
+# 型検査は依存定義がないため対象外（構文のみ）。
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "20"
+      - name: TypeScript を入れる（版固定・リポの外）
+        run: |
+          mkdir -p "$RUNNER_TEMP/ts" && cd "$RUNNER_TEMP/ts"
+          npm init -y > /dev/null
+          npm install --ignore-scripts typescript@5.6.3
+      - name: 構文検査
+        env:
+          NODE_PATH: ${{ runner.temp }}/ts/node_modules
+        run: |
+          node -e '
+          const ts = require("typescript"), fs = require("fs");
+          let bad = 0;
+          for (const f of process.argv.slice(1)) {
+            const r = ts.transpileModule(fs.readFileSync(f, "utf8"), { reportDiagnostics: true, fileName: f });
+            for (const d of r.diagnostics) { bad++; console.error(f, ts.flattenDiagnosticMessageText(d.messageText, "\n")); }
+          }
+          console.log("構文エラー", bad);
+          process.exit(bad ? 1 : 0);
+          ' $(find src -name '*.ts')
